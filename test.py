@@ -5,8 +5,7 @@ from datetime import datetime
 import zoneinfo
 from email.mime.text import MIMEText
 
-# Swapping the base URL out for the direct Next.js API data hydration route channel
-DATA_URL = "https://permupdate.com"  # Targets the raw dynamic background metrics collection directly
+DATA_URL = "https://permupdate.com"  
 LAST_DATE_FILE = "last_known_date.txt"
 
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
@@ -48,56 +47,33 @@ def check_via_api():
             print(f"Already sent today's alert ({today_str}). Skipping check to prevent double-emailing.")
             return
 
-        # 3. Pull directly from the target system database data layer endpoint
-        print("Connecting directly to the background API endpoint stream...")
-        
+        # 3. Pull directly from the live public URL page stream
+        print("Connecting to permupdate.com to parse text layers...")
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        
         response = requests.get(DATA_URL, headers=headers, timeout=10)
         
-        # Fallback check path: If the API endpoint path structure is shifted, query the main route array alternative
-        if response.status_code != 200:
-            print(f"⚠️ Primary API path returned code {response.status_code}. Querying fallback database channel...")
-            response = requests.get("https://permupdate.com", headers=headers, timeout=10)
-
-        # Parse the structured JSON database object directly
-        data = response.json()
+        # Pull the entire raw text corpus from the page source
+        page_html_source = response.text
         
-        # Extract target property mapping values (handles typical structural permutations)
-        scraped_date = data.get("lastSyncDate") or data.get("updatedAt") or data.get("date")
-        
-        # If deeply nested under a structural collection array, extract from standard record root
-        if isinstance(data, list) and len(data) > 0:
-            scraped_date = data[0].get("date") or data[0].get("lastSyncDate")
+        # 4. Check if today's date string profile exists anywhere inside the page body source
+        # (This catches it whether it is sitting in the raw HTML text, a script data layer, or a meta block)
+        if today_str in page_html_source:
+            scraped_date = today_str
+            print(f"🎯 Match Confirmed! Today's date '{today_str}' discovered inside the webpage code data layer.")
+        else:
+            scraped_date = "Old Date / Not Updated"
+            print(f"ℹ️ Today's target date '{today_str}' is not yet visible in the webpage text stream source.")
 
-        if not scraped_date:
-            print("❌ Unable to pinpoint the date parameter property inside the API payload tree. Response body structure:")
-            print(str(data)[:200])
-            return
-            
-        # Clean formatting structure to match target format pattern string profiles cleanly
-        scraped_date = scraped_date.split("T")[0].strip() # Strips out timestamps if present
-        
-        # Convert date to standard M/D/YYYY display format if it returns as YYYY-MM-DD
-        if "-" in scraped_date:
-            try:
-                date_obj = datetime.strptime(scraped_date, "%Y-%m-%d")
-                scraped_date = date_obj.strftime("%m/%d/%Y").replace("/0", "/").lstrip("0")
-            except ValueError:
-                pass
-
-        print(f"Live Dashboard Date Found: '{scraped_date}'")
-
-        # 4. Core Validation Logic
+        # 5. Core Validation Logic
         if scraped_date == today_str:
             send_email(scraped_date)
             with open(LAST_DATE_FILE, "w") as f:
                 f.write(scraped_date)
             print(f"Success! State saved to {LAST_DATE_FILE}. No more alerts will send today.")
         else:
-            print(f"Dashboard date ({scraped_date}) is not today's date ({today_str}) yet. Pipeline will re-check in 5 minutes.")
+            print(f"Dashboard has not updated to today's date yet. Pipeline will re-check in 5 minutes.")
 
     except Exception as e:
         print(f"Check execution failure details: {e}")
