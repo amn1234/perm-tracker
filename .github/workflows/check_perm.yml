@@ -22,9 +22,7 @@ jobs:
       - name: Install request handlers and Playwright
         run: |
           pip install -r requirements.txt
-          pip install playwright
 
-      # FIX: Installs system-level browser binaries and underlying Linux dependencies
       - name: Install Playwright System Browsers
         run: playwright install chromium --with-deps
 
@@ -35,7 +33,6 @@ jobs:
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
         run: python test.py
 
-      # FIX: Added 'touch' to safely handle commits when the state log doesn't exist yet
       - name: Commit and Push state log tracking changes
         run: |
           git config --global user.name "git-pipeline-bot"
