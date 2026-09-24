@@ -23,7 +23,7 @@ def send_email(current_date):
     msg["To"] = RECEIVER_EMAIL
     
     try:
-        with smtplib.SMTP("://gmail.com", 587) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
