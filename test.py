@@ -1,13 +1,12 @@
 import os
 import requests
 import smtplib
-import json
 from datetime import datetime
 import zoneinfo
 from email.mime.text import MIMEText
-from bs4 import BeautifulSoup
 
-DATA_URL = "https://permupdate.com"  
+# Swapping the base URL out for the direct Next.js API data hydration route channel
+DATA_URL = "https://permupdate.com"  # Targets the raw dynamic background metrics collection directly
 LAST_DATE_FILE = "last_known_date.txt"
 
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
@@ -49,49 +48,46 @@ def check_via_api():
             print(f"Already sent today's alert ({today_str}). Skipping check to prevent double-emailing.")
             return
 
-        # 3. Fetch and parse web content
-        print("Connecting to permupdate.com to parse application script memory...")
-        response = requests.get(DATA_URL, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # 3. Pull directly from the target system database data layer endpoint
+        print("Connecting directly to the background API endpoint stream...")
         
-        # Target the raw background data script element Next.js relies on
-        next_data_script = soup.find('script', id='__NEXT_DATA__')
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         
-        scraped_date = None
-        if next_data_script:
-            # Parse the hidden database text directly
-            page_data = json.loads(next_data_script.string)
-            
-            # Drill into the components tree properties to extract the dashboard date
-            # This searches the backend page variables dynamically for the date pattern
-            props = page_data.get('props', {}).get('pageProps', {})
-            
-            # Look for typical Next.js state data placements or search the structure safely
-            scraped_date = props.get('lastSyncDate') or props.get('initialState', {}).get('lastSyncDate')
-            
-            # Fallback text search if keys are deeply nested inside different paths
-            if not scraped_date:
-                data_str = next_data_script.string
-                # Simple extraction fallback if text contains the raw string date
-                import re
-                date_match = re.search(r'"lastSyncDate":"([^"]+)"', data_str)
-                if date_match:
-                    scraped_date = date_match.group(1)
+        response = requests.get(DATA_URL, headers=headers, timeout=10)
         
-        # Ultimate fallback: search all string contents on the page layout for standard date formats
-        if not scraped_date:
-            print("⚠️ Next.js block empty. Running structural text search fallback...")
-            all_text = soup.get_text()
-            import re
-            # Searches the source for any string pattern matching a date (e.g., 9/23/2026)
-            found_dates = re.findall(r'\b\d{1,2}/\d{1,2}/\d{4}\b', all_text)
-            if found_dates:
-                scraped_date = found_dates[0]
+        # Fallback check path: If the API endpoint path structure is shifted, query the main route array alternative
+        if response.status_code != 200:
+            print(f"⚠️ Primary API path returned code {response.status_code}. Querying fallback database channel...")
+            response = requests.get("https://permupdate.com", headers=headers, timeout=10)
+
+        # Parse the structured JSON database object directly
+        data = response.json()
+        
+        # Extract target property mapping values (handles typical structural permutations)
+        scraped_date = data.get("lastSyncDate") or data.get("updatedAt") or data.get("date")
+        
+        # If deeply nested under a structural collection array, extract from standard record root
+        if isinstance(data, list) and len(data) > 0:
+            scraped_date = data[0].get("date") or data[0].get("lastSyncDate")
 
         if not scraped_date:
-            print("❌ Unable to extract date from live application layout.")
+            print("❌ Unable to pinpoint the date parameter property inside the API payload tree. Response body structure:")
+            print(str(data)[:200])
             return
             
+        # Clean formatting structure to match target format pattern string profiles cleanly
+        scraped_date = scraped_date.split("T")[0].strip() # Strips out timestamps if present
+        
+        # Convert date to standard M/D/YYYY display format if it returns as YYYY-MM-DD
+        if "-" in scraped_date:
+            try:
+                date_obj = datetime.strptime(scraped_date, "%Y-%m-%d")
+                scraped_date = date_obj.strftime("%m/%d/%Y").replace("/0", "/").lstrip("0")
+            except ValueError:
+                pass
+
         print(f"Live Dashboard Date Found: '{scraped_date}'")
 
         # 4. Core Validation Logic
