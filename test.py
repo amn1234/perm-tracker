@@ -7,6 +7,8 @@ from email.mime.text import MIMEText
 
 DATA_URL = "https://permupdate.com"
 LAST_DATE_FILE = "last_known_date.txt"
+DEBUG_DUMP_FILE = "debug_source.html"
+
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
 SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
 RECEIVER_EMAIL = os.environ.get("RECEIVER_EMAIL")
@@ -19,8 +21,7 @@ def send_email(current_date):
     msg["To"] = RECEIVER_EMAIL
     
     try:
-        # FIX: Changed invalid URL string format to valid Gmail SMTP server hostname
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        with smtplib.SMTP("://gmail.com", 587) as server:
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
@@ -30,16 +31,15 @@ def send_email(current_date):
 
 def check_via_api():
     try:
-        # 1. Force the system timezone evaluation to match the EST window explicitly
+        # 1. Evaluate explicit Eastern Time zone window
         est_zone = zoneinfo.ZoneInfo("America/New_York")
         today_est = datetime.now(est_zone)
         
-        # FIX: Replaced regex/string replace logic with a cleaner, robust date pattern format string
-        # %-m removes leading zero from month, %-d removes leading zero from day (works on Linux/Unix systems)
+        # Format string variant targeting system-native stripping mechanisms
         try:
             today_str = today_est.strftime("%-m/%-d/%Y")
         except ValueError:
-            # Fallback formatting for Windows environments if %-m execution isn't locally supported
+            # Fallback block configuration for non-POSIX environments (e.g. local Windows testing)
             today_str = f"{today_est.month}/{today_est.day}/{today_est.year}"
             
         print(f"System Time Baseline (Today EST): '{today_str}'")
@@ -58,12 +58,19 @@ def check_via_api():
         # 3. Pull directly from the live public URL page stream
         print("Connecting to permupdate.com to parse text layers...")
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5"
         }
-        response = requests.get(DATA_URL, headers=headers, timeout=10)
         
-        # Pull the entire raw text corpus from the page source
+        # Using a requests session stream to cleanly capture total payload response contexts
+        session = requests.Session()
+        response = session.get(DATA_URL, headers=headers, timeout=15)
         page_html_source = response.text
+
+        # Alternative date signature patterns to search for during debug processing
+        iso_date_str = today_est.strftime("%Y-%m-%d") # e.g. "2026-09-23"
+        alt_slash_str = today_est.strftime("%m/%d/%Y") # e.g. "09/23/2026"
 
         # 4. Check if today's date string profile exists anywhere inside the page body source
         if today_str in page_html_source:
@@ -71,7 +78,20 @@ def check_via_api():
             print(f"🎯 Match Confirmed! Today's date '{today_str}' discovered inside the webpage code data layer.")
         else:
             scraped_date = "Old Date / Not Updated"
-            print(f"ℹ️ Today's target date '{today_str}' is not yet visible in the webpage text stream source.")
+            print(f"ℹ️ Today's target date '{today_str}' is not yet visible in the text stream.")
+            
+            # --- SOLUTION 3 IMPLEMENTATION BLOCK ---
+            print(f"⚙️ Running Signature Analysis: Capturing payload snapshot to '{DEBUG_DUMP_FILE}'...")
+            
+            # Dump the literal unfiltered network response to disk
+            with open(DEBUG_DUMP_FILE, "w", encoding="utf-8") as f:
+                f.write(page_html_source)
+            
+            print(f"📁 Raw source saved successfully ({len(page_html_source)} characters written).")
+            print("🔬 Check for alternative date formats in server payload:")
+            print(f"   -> Contains '{iso_date_str}' (ISO layout)? {iso_date_str in page_html_source}")
+            print(f"   -> Contains '{alt_slash_str}' (Zero-padded slash)? {alt_slash_str in page_html_source}")
+            print(f"   -> Is the payload complete (Contains '</html>')? {'</html>' in page_html_source.lower()}")
 
         # 5. Core Validation Logic
         if scraped_date == today_str:
