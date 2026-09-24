@@ -5,9 +5,8 @@ from datetime import datetime
 import zoneinfo
 from email.mime.text import MIMEText
 
-DATA_URL = "https://permupdate.com"  
+DATA_URL = "https://permupdate.com"
 LAST_DATE_FILE = "last_known_date.txt"
-
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
 SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
 RECEIVER_EMAIL = os.environ.get("RECEIVER_EMAIL")
@@ -20,11 +19,12 @@ def send_email(current_date):
     msg["To"] = RECEIVER_EMAIL
     
     try:
-        with smtplib.SMTP("://gmail.com", 587) as server:
+        # FIX: Changed invalid URL string format to valid Gmail SMTP server hostname
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
-        print("📨 Notification email successfully delivered.")
+            print("📨 Notification email successfully delivered.")
     except Exception as e:
         print(f"❌ Failed to deliver email: {e}")
 
@@ -33,7 +33,15 @@ def check_via_api():
         # 1. Force the system timezone evaluation to match the EST window explicitly
         est_zone = zoneinfo.ZoneInfo("America/New_York")
         today_est = datetime.now(est_zone)
-        today_str = today_est.strftime("%m/%d/%Y").replace("/0", "/").lstrip("0")
+        
+        # FIX: Replaced regex/string replace logic with a cleaner, robust date pattern format string
+        # %-m removes leading zero from month, %-d removes leading zero from day (works on Linux/Unix systems)
+        try:
+            today_str = today_est.strftime("%-m/%-d/%Y")
+        except ValueError:
+            # Fallback formatting for Windows environments if %-m execution isn't locally supported
+            today_str = f"{today_est.month}/{today_est.day}/{today_est.year}"
+            
         print(f"System Time Baseline (Today EST): '{today_str}'")
 
         # 2. Check if we already successfully notified you today
@@ -56,9 +64,8 @@ def check_via_api():
         
         # Pull the entire raw text corpus from the page source
         page_html_source = response.text
-        
+
         # 4. Check if today's date string profile exists anywhere inside the page body source
-        # (This catches it whether it is sitting in the raw HTML text, a script data layer, or a meta block)
         if today_str in page_html_source:
             scraped_date = today_str
             print(f"🎯 Match Confirmed! Today's date '{today_str}' discovered inside the webpage code data layer.")
