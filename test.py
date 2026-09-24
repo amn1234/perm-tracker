@@ -4,9 +4,9 @@ import smtplib
 from datetime import datetime
 import zoneinfo
 from email.mime.text import MIMEText
+from bs4 import BeautifulSoup  # New library to parse the live HTML code
 
-# Use the page's direct background data pipeline rather than rendering the UI
-DATA_URL = "https://permupdate.com"  # Replace this with your dynamic backend endpoint
+DATA_URL = "https://permupdate.com"  
 LAST_DATE_FILE = "last_known_date.txt"
 
 # Pull secret authentication credentials securely from GitHub environment secrets
@@ -23,7 +23,7 @@ def send_email(current_date):
     msg["To"] = RECEIVER_EMAIL
     
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        with smtplib.SMTP("://gmail.com", 587) as server:
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
@@ -50,18 +50,23 @@ def check_via_api():
             print(f"Already sent today's alert ({today_str}). Skipping check to prevent double-emailing.")
             return
 
-        # 3. Connect to the data source
-        print("Connecting to the page source data layer...")
+        # 3. Fetch the live web content
+        print("Connecting to permupdate.com to scan dashboard tags...")
         response = requests.get(DATA_URL, timeout=10)
         
-        try:
-            data = response.json()
-            scraped_date = data.get("lastSyncDate", "").strip() 
-        except Exception:
-            print("⚠️ URL returned HTML instead of JSON. Injecting a mock date payload for testing...")
-            scraped_date = "9/23/2026"  
+        # Parse the raw webpage text source using BeautifulSoup
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        print(f"Dashboard Date Found: '{scraped_date}'")
+        # Find the tag using the exact classes visible in your DevTools inspector window
+        date_element = soup.find('p', class_='text-2xl font-bold dark:text-white')
+        
+        if date_element:
+            scraped_date = date_element.text.strip()
+        else:
+            print("❌ Target HTML paragraph class wrapper layout not found on the page.")
+            return
+        
+        print(f"Live Dashboard Date Found: '{scraped_date}'")
 
         # 4. Core Validation Logic
         if scraped_date == today_str:
