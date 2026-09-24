@@ -1,13 +1,12 @@
 import os
-import requests
 import smtplib
 from datetime import datetime
 import zoneinfo
 from email.mime.text import MIMEText
+from playwright.sync_api import sync_playwright
 
 DATA_URL = "https://permupdate.com"
 LAST_DATE_FILE = "last_known_date.txt"
-DEBUG_DUMP_FILE = "debug_source.html"
 
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
 SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
@@ -29,17 +28,15 @@ def send_email(current_date):
     except Exception as e:
         print(f"❌ Failed to deliver email: {e}")
 
-def check_via_api():
+def check_via_headless_browser():
     try:
         # 1. Evaluate explicit Eastern Time zone window
         est_zone = zoneinfo.ZoneInfo("America/New_York")
         today_est = datetime.now(est_zone)
         
-        # Format string variant targeting system-native stripping mechanisms
         try:
             today_str = today_est.strftime("%-m/%-d/%Y")
         except ValueError:
-            # Fallback block configuration for non-POSIX environments (e.g. local Windows testing)
             today_str = f"{today_est.month}/{today_est.day}/{today_est.year}"
             
         print(f"System Time Baseline (Today EST): '{today_str}'")
@@ -55,43 +52,30 @@ def check_via_api():
             print(f"Already sent today's alert ({today_str}). Skipping check to prevent double-emailing.")
             return
 
-        # 3. Pull directly from the live public URL page stream
-        print("Connecting to permupdate.com to parse text layers...")
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5"
-        }
+        # 3. Pull directly using an automated browser instance
+        print("Launching headless Chromium instance...")
+        scraped_date = "Old Date / Not Updated"
         
-        # Using a requests session stream to cleanly capture total payload response contexts
-        session = requests.Session()
-        response = session.get(DATA_URL, headers=headers, timeout=15)
-        page_html_source = response.text
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = context.new_page()
+            
+            print(f"Navigating to {DATA_URL} and waiting for text layout hydration...")
+            page.goto(DATA_URL, wait_until="networkidle")
+            
+            # Extract the raw rendered layout text contents from the body tag
+            fully_rendered_text = page.locator("body").inner_text()
+            browser.close()
 
-        # Alternative date signature patterns to search for during debug processing
-        iso_date_str = today_est.strftime("%Y-%m-%d") # e.g. "2026-09-23"
-        alt_slash_str = today_est.strftime("%m/%d/%Y") # e.g. "09/23/2026"
-
-        # 4. Check if today's date string profile exists anywhere inside the page body source
-        if today_str in page_html_source:
+        # 4. Perform dynamic data verification
+        if today_str in fully_rendered_text:
             scraped_date = today_str
-            print(f"🎯 Match Confirmed! Today's date '{today_str}' discovered inside the webpage code data layer.")
+            print(f"🎯 Match Confirmed! Today's date '{today_str}' discovered inside the fully hydrated layout runtime.")
         else:
-            scraped_date = "Old Date / Not Updated"
-            print(f"ℹ️ Today's target date '{today_str}' is not yet visible in the text stream.")
-            
-            # --- SOLUTION 3 IMPLEMENTATION BLOCK ---
-            print(f"⚙️ Running Signature Analysis: Capturing payload snapshot to '{DEBUG_DUMP_FILE}'...")
-            
-            # Dump the literal unfiltered network response to disk
-            with open(DEBUG_DUMP_FILE, "w", encoding="utf-8") as f:
-                f.write(page_html_source)
-            
-            print(f"📁 Raw source saved successfully ({len(page_html_source)} characters written).")
-            print("🔬 Check for alternative date formats in server payload:")
-            print(f"   -> Contains '{iso_date_str}' (ISO layout)? {iso_date_str in page_html_source}")
-            print(f"   -> Contains '{alt_slash_str}' (Zero-padded slash)? {alt_slash_str in page_html_source}")
-            print(f"   -> Is the payload complete (Contains '</html>')? {'</html>' in page_html_source.lower()}")
+            print(f"ℹ️ Today's target date '{today_str}' is still missing from the active layout context.")
 
         # 5. Core Validation Logic
         if scraped_date == today_str:
@@ -106,4 +90,4 @@ def check_via_api():
         print(f"Check execution failure details: {e}")
 
 if __name__ == "__main__":
-    check_via_api()
+    check_via_headless_browser()
