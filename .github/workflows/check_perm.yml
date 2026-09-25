@@ -3,7 +3,7 @@ name: Scheduled API Case Check
 on:
   schedule:
     # Triggers EXACTLY ONCE a day at 9:00 PM EST (1:00 AM UTC next day)
-    - cron: '0 1 * * *'
+    - cron: '7 1 * * *'
   workflow_dispatch: # Keeps manual trigger active for testing
 
 jobs:
